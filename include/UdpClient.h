@@ -1,19 +1,33 @@
 #pragma once
 
 #include "AetherNetExport.h"
+
 #include <string>
+#include <thread>
+#include <atomic>
 
 class AETHERNET_API UdpClient
 {
 public:
-	UdpClient();
-	~UdpClient();
+    UdpClient();
+    ~UdpClient();
 
-	bool connectToServer(const std::string& ip, int port);
+    bool connectToServer(const std::string& serverIp, unsigned short serverPort);
+    bool sendMessage(const std::string& msg);
+    std::string receiveMessage();
+    void disconnect();
 
-	bool sendMessage(const std::string& msg);
+    bool doDiffieHellmanHandshake();
 
-	std::string receiveMessage();
+    bool requestClientList();
 
-	void disconnect();
+private:
+    void receiveLoop();
+
+    std::atomic<bool> connected_;
+    std::thread recvThread_;
+
+    int clientSocket_;
+    std::string serverIp_;
+    unsigned short serverPort_;
 };
