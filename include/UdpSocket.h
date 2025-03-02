@@ -1,3 +1,5 @@
+#pragma once
+
 #include "SocketAddress.h"
 
 #include <winsock2.h>

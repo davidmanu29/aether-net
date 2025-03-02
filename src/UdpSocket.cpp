@@ -54,5 +54,5 @@ int UdpSocket::ReceiveFrom(void* inBuffer, int inLen, SocketAddress& outFrom)
     {
         SocketUtil::ReportError(L"UDPSocket::ReceiveFrom");
         return -SocketUtil::GetLastError();
-    }
+    }   
 }
