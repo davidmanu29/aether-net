@@ -12,6 +12,16 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 add_library(AetherNet SHARED
     src/UdpServer.cpp
     src/UdpClient.cpp
+    src/AetherNet.cpp
+    src/UdpSocket.cpp
+    src/SocketAddress.cpp
+    src/SocketAddressFactory.cpp
+    include/UdpServer.h
+    include/UdpClient.h
+    include/SocketAddress.h
+    include/AetherNetExport.h
+    include/UdpSocket.h
+    include/SocketAddressFactory.h
 )
 
 target_include_directories(AetherNet
