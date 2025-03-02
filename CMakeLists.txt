@@ -14,10 +14,12 @@ add_library(AetherNet SHARED
     src/UdpClient.cpp
     src/AetherNet.cpp
     src/UdpSocket.cpp
+    src/SocketUtil.cpp
     src/SocketAddress.cpp
     src/SocketAddressFactory.cpp
     include/UdpServer.h
     include/UdpClient.h
+    include/SocketUtil.h
     include/SocketAddress.h
     include/AetherNetExport.h
     include/UdpSocket.h

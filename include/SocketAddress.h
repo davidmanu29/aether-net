@@ -6,6 +6,7 @@
 
 class SocketAddress
 {
+	friend class UdpSocket;
 public:
 	SocketAddress(uint32_t inAddress, uint16_t inPort);
 	SocketAddress(const sockaddr& inSockAddr);
