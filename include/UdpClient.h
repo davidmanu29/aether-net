@@ -1,33 +1,21 @@
 #pragma once
 
-#include "AetherNetExport.h"
-
+#include <WinSock2.h>
+#include <WS2tcpip.h>
 #include <string>
-#include <thread>
-#include <atomic>
 
-class AETHERNET_API UdpClient
+class UdpClient
 {
 public:
-    UdpClient();
+    UdpClient(const std::string& serverIp = "127.0.0.1", unsigned short port = 54000);
+
     ~UdpClient();
+    bool init();
 
-    bool connectToServer(const std::string& serverIp, unsigned short serverPort);
-    bool sendMessage(const std::string& msg);
-    std::string receiveMessage();
-    void disconnect();
-
-    bool doDiffieHellmanHandshake();
-
-    bool requestClientList();
+    bool sendMessage(const std::string& message);
 
 private:
-    void receiveLoop();
-
-    std::atomic<bool> connected_;
-    std::thread recvThread_;
-
-    int clientSocket_;
-    std::string serverIp_;
-    unsigned short serverPort_;
+    SOCKET mSocket;
+    sockaddr_in mServer;
+    bool mInitialized;
 };

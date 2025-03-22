@@ -1,176 +1,106 @@
 #include "UdpServer.h"
 #include <iostream>
-#include <cstring>   // for memset, memcpy
-#ifdef _WIN32
-#include <winsock2.h>
-#include <ws2tcpip.h>
-#pragma comment(lib, "Ws2_32.lib")
-#else
-#include <sys/socket.h>
-#include <arpa/inet.h>
-#include <unistd.h>
-#endif
+#include <cstring>
 
-static long long modExp(long long base, long long exp, long long modulus)
+UdpServer::UdpServer(unsigned short port)
+	: mSocket(INVALID_SOCKET), mPort(port), mInitialized(false)
 {
-    long long result = 1;
-    base = base % modulus;
-    while (exp > 0)
-    {
-        if (exp & 1)
-            result = (result * base) % modulus;
-        base = (base * base) % modulus;
-        exp >>= 1;
-    }
-    return result;
-}
 
-static const long long DH_PRIME = 23;
-static const long long DH_BASE = 5;
-
-UdpServer::UdpServer()
-    : running_(false)
-    , serverThread_()
-    , serverSocket_(-1)
-    , listenPort_(0)
-{
-#ifdef _WIN32
-    WSADATA wsaData;
-    WSAStartup(MAKEWORD(2, 2), &wsaData);
-#endif
 }
 
 UdpServer::~UdpServer()
 {
-    stop();
-#ifdef _WIN32
+    if (mSocket != INVALID_SOCKET)
+    {
+        closesocket(mSocket);
+    }
+
     WSACleanup();
-#endif
 }
 
-bool UdpServer::start(unsigned short port)
+bool UdpServer::init()
 {
-    listenPort_ = port;
+    WSAData wsaData;
+    int result = WSAStartup(MAKEWORD(2, 2), &wsaData);
 
-    serverSocket_ = ::socket(AF_INET, SOCK_DGRAM, 0);
-    if (serverSocket_ < 0)
+    if (result != 0)
     {
-        std::cerr << "[UdpServer] Failed to create socket.\n";
+        std::cerr << "Socket creation failed: " << WSAGetLastError() << std::endl;
+        WSACleanup();
         return false;
     }
 
-    // Bind
+    mSocket = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+    if (mSocket == INVALID_SOCKET)
+    {
+        std::cerr << "Socket creation failed: " << WSAGetLastError() << std::endl;
+        WSACleanup();
+        return false;
+    }
+
     sockaddr_in serverAddr;
-    memset(&serverAddr, 0, sizeof(serverAddr));
+    std::memset(&serverAddr, 0, sizeof(serverAddr));
     serverAddr.sin_family = AF_INET;
     serverAddr.sin_addr.s_addr = INADDR_ANY;
-    serverAddr.sin_port = htons(port);
+    serverAddr.sin_port = htons(mPort);
 
-    if (bind(serverSocket_, (struct sockaddr*)&serverAddr, sizeof(serverAddr)) < 0)
+    if (bind(mSocket, reinterpret_cast<sockaddr*>(&serverAddr), sizeof(serverAddr)) == SOCKET_ERROR)
     {
-        std::cerr << "[UdpServer] Failed to bind socket.\n";
-#ifdef _WIN32
-        closesocket(serverSocket_);
-#else
-        close(serverSocket_);
-#endif
+        std::cerr << "Bind failed: " << WSAGetLastError() << std::endl;
+        closesocket(mSocket);
+        WSACleanup();
         return false;
     }
 
-    running_ = true;
-    serverThread_ = std::thread(&UdpServer::serverLoop, this);
-
-    std::cout << "[UdpServer] Server started on port " << port << "\n";
+    mInitialized = true;
     return true;
 }
 
-void UdpServer::stop()
+void UdpServer::run()
 {
-    running_ = false;
-    if (serverThread_.joinable())
-        serverThread_.join();
-
-    if (serverSocket_ >= 0)
+    if (!mInitialized)
     {
-#ifdef _WIN32
-        closesocket(serverSocket_);
-#else
-        close(serverSocket_);
-#endif
-        serverSocket_ = -1;
+        std::cerr << "Server not initialized." << std::endl;
+        return;
     }
-    std::cout << "[UdpServer] Server stopped.\n";
-}
 
-void UdpServer::registerClient(const ClientEndpoint& client)
-{
-    std::lock_guard<std::mutex> lock(clientsMutex_);
-    clients_.push_back(client);
-}
-
-std::vector<ClientEndpoint> UdpServer::getRegisteredClients()
-{
-    std::lock_guard<std::mutex> lock(clientsMutex_);
-    return clients_;
-}
-
-void UdpServer::serverLoop()
-{
-    char buffer[1024];
     sockaddr_in clientAddr;
-    socklen_t addrLen = sizeof(clientAddr);
+    int clientAddrSize = sizeof(clientAddr);
+    char buffer[1024];
 
-    while (running_)
+    std::cout << "UDP Server running on port " << mPort << ". Waiting for messages..." << std::endl;
+
+    while (true)
     {
-        memset(buffer, 0, sizeof(buffer));
+        std::memset(&clientAddr, 0, clientAddrSize);
+        std::memset(buffer, 0, sizeof(buffer));
 
-        int received = recvfrom(serverSocket_, buffer, sizeof(buffer), 0,
-            (struct sockaddr*)&clientAddr, &addrLen);
-
-        if (received > 0)
+        int bytesReceived = recvfrom(mSocket, buffer, sizeof(buffer) - 1, 0,
+            reinterpret_cast<sockaddr*>(&clientAddr), &clientAddrSize);
+        if (bytesReceived == SOCKET_ERROR)
         {
-            char clientIP[INET_ADDRSTRLEN];
-            inet_ntop(AF_INET, &(clientAddr.sin_addr), clientIP, INET_ADDRSTRLEN);
-            unsigned short clientPort = ntohs(clientAddr.sin_port);
-
-            ClientEndpoint ce{ clientIP, clientPort };
-            registerClient(ce);
-
-            std::string msg(buffer, buffer + received);
-            std::cout << "[UdpServer] Received from " << clientIP << ":" << clientPort
-                << " -> " << msg << "\n";
-
-            if (msg.rfind("DH:", 0) == 0)
-            {
-                long long clientPubKey = std::stoll(msg.substr(3));
-
-                static long long serverSecret = 15;
-                long long serverPubKey = modExp(DH_BASE, serverSecret, DH_PRIME);
-
-                long long sharedKey = modExp(clientPubKey, serverSecret, DH_PRIME);
-                std::cout << "[UdpServer] Computed sharedKey: " << sharedKey << "\n";
-
-                std::string response = "DH_SERVER:" + std::to_string(serverPubKey);
-                sendto(serverSocket_, response.c_str(), response.size(), 0,
-                    (struct sockaddr*)&clientAddr, addrLen);
-            }
-            else if (msg == "GET_CLIENTS")
-            {
-                auto clientList = getRegisteredClients();
-                std::string listStr = "CLIENT_LIST\n";
-                for (auto& c : clientList)
-                {
-                    listStr += c.ip + ":" + std::to_string(c.port) + "\n";
-                }
-                sendto(serverSocket_, listStr.c_str(), listStr.size(), 0,
-                    (struct sockaddr*)&clientAddr, addrLen);
-            }
-            else
-            {
-                std::string reply = "[ServerEcho] " + msg;
-                sendto(serverSocket_, reply.c_str(), reply.size(), 0,
-                    (struct sockaddr*)&clientAddr, addrLen);
-            }
+            std::cerr << "recvfrom failed: " << WSAGetLastError() << std::endl;
+            continue;
         }
+        buffer[bytesReceived] = '\0'; // ensure null terminated string
+
+        char clientIp[INET_ADDRSTRLEN];
+        inet_ntop(AF_INET, &clientAddr.sin_addr, clientIp, INET_ADDRSTRLEN);
+
+        std::cout << "Message received from " << clientIp << ": " << buffer << std::endl;
     }
 }
+
+#ifdef UDPSERVER_MAIN
+int main()
+{
+    UdpServer server(54000);
+    if (!server.init())
+    {
+        std::cerr << "Failed to initialize UDP server." << std::endl;
+        return 1;
+    }
+    server.run();
+    return 0;
+}
+#endif

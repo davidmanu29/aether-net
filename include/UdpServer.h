@@ -2,40 +2,26 @@
 
 #include "AetherNetExport.h"
 
-#include <string>
-#include <thread>
-#include <atomic>
-#include <map>
-#include <mutex>
-#include <vector>
+#include <WinSock2.h>
+#include <WS2tcpip.h>
 
-struct ClientEndpoint
-{
-    std::string ip;
-    unsigned short port;
-};
-
-class AETHERNET_API UdpServer
+class UdpServer
 {
 public:
-    UdpServer();
-    ~UdpServer();
+	explicit UdpServer(unsigned short port = 54000);
 
-    bool start(unsigned short port);
-    void stop();
+	~UdpServer();
 
-    void registerClient(const ClientEndpoint& client);
-    std::vector<ClientEndpoint> getRegisteredClients();
+	bool init();
+	void run();
 
 private:
-    void serverLoop();
 
-    std::atomic<bool> running_;
-    std::thread serverThread_;
+	SOCKET mSocket;
+	unsigned short mPort;
+	bool mInitialized;
 
-    std::mutex clientsMutex_;
-    std::vector<ClientEndpoint> clients_;
-
-    int serverSocket_;
-    unsigned short listenPort_;
+	//no copy-construction or assignment operation should be available
+	UdpServer(const UdpServer&) = delete;
+	UdpServer& operator=(const UdpServer&) = delete;
 };

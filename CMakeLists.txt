@@ -10,7 +10,6 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
 add_library(AetherNet SHARED
-    src/UdpServer.cpp
     src/UdpClient.cpp
     src/AetherNet.cpp
     src/UdpSocket.cpp
@@ -35,3 +34,13 @@ target_include_directories(AetherNet
 target_compile_definitions(AetherNet
     PRIVATE AETHERNET_EXPORTS
 )
+
+target_link_libraries(AetherNet PRIVATE ws2_32)
+
+add_executable(UdpServerExe src/UdpServer.cpp)
+target_link_libraries(UdpServerExe PRIVATE AetherNet ws2_32)
+target_compile_definitions(UdpServerExe PRIVATE UDPSERVER_MAIN)
+
+add_executable(UdpClientExe src/UdpClient.cpp)
+target_link_libraries(UdpClientExe PRIVATE AetherNet ws2_32)
+target_compile_definitions(UdpClientExe PRIVATE UDPCLIENT_MAIN)
