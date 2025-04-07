@@ -1,8 +1,9 @@
 #pragma once
 
+#include <string>
+#include <unordered_map>
 #include <WinSock2.h>
 #include <WS2tcpip.h>
-#include <string>
 
 class UdpClient
 {
@@ -14,8 +15,11 @@ public:
 
     bool sendMessage(const std::string& message);
 
+    SOCKET GetSocket();
+
 private:
     SOCKET mSocket;
     sockaddr_in mServer;
     bool mInitialized;
+    std::unordered_map<std::string, sockaddr_in> mClients;
 };

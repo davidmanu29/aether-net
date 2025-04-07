@@ -31,6 +31,7 @@ bool UdpServer::init()
     }
 
     mSocket = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+
     if (mSocket == INVALID_SOCKET)
     {
         std::cerr << "Socket creation failed: " << WSAGetLastError() << std::endl;
@@ -77,6 +78,7 @@ void UdpServer::run()
 
         int bytesReceived = recvfrom(mSocket, buffer, sizeof(buffer) - 1, 0,
             reinterpret_cast<sockaddr*>(&clientAddr), &clientAddrSize);
+
         if (bytesReceived == SOCKET_ERROR)
         {
             std::cerr << "recvfrom failed: " << WSAGetLastError() << std::endl;
@@ -86,8 +88,31 @@ void UdpServer::run()
 
         char clientIp[INET_ADDRSTRLEN];
         inet_ntop(AF_INET, &clientAddr.sin_addr, clientIp, INET_ADDRSTRLEN);
+        int clientPort = ntohs(clientAddr.sin_port);
 
-        std::cout << "Message received from " << clientIp << ": " << buffer << std::endl;
+        std::string clientKey = std::string(clientIp) + ":" + std::to_string(clientPort);
+
+        mClients.emplace(clientKey, clientAddr);
+
+        std::cout << "Message received from " << clientKey << ": " << buffer << std::endl;
+
+        std::string clientList;
+
+        for (const auto& client : mClients)
+        {
+            if (client.first != clientKey)
+            {
+                clientList += client.first + "\n";
+            }
+        }
+
+        if (!clientList.empty())
+        {
+            std::cout << "Sending list of all clients to: " << clientKey << std::endl;
+
+            sendto(mSocket, clientList.c_str(), clientList.size(), 0,
+                reinterpret_cast<const sockaddr*>(&clientAddr), sizeof(clientAddr));
+        }
     }
 }
 
@@ -95,11 +120,13 @@ void UdpServer::run()
 int main()
 {
     UdpServer server(54000);
+
     if (!server.init())
     {
         std::cerr << "Failed to initialize UDP server." << std::endl;
         return 1;
     }
+
     server.run();
     return 0;
 }
