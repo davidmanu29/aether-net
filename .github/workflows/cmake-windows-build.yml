@@ -21,5 +21,8 @@ jobs:
       - name: Configure with CMake
         run: cmake -S . -B build -A x64 -DCMAKE_BUILD_TYPE=${{ matrix.build-type }}
 
-      - name: Build
-        run: cmake --build build --config ${{ matrix.build-type }}
+      - name: Build AetherNet Library
+        run: cmake --build build --config ${{ matrix.build-type }} --target AetherNet
+
+      - name: Build Executables
+        run: cmake --build build --config ${{ matrix.build-type }} --target UdpServerExe UdpClientExe
