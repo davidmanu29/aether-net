@@ -92,26 +92,42 @@ void UdpServer::run()
 
         std::string clientKey = std::string(clientIp) + ":" + std::to_string(clientPort);
 
-        mClients.emplace(clientKey, clientAddr);
+        mClients[clientKey] = clientAddr;
 
-        std::cout << "Message received from " << clientKey << ": " << buffer << std::endl;
-
-        std::string clientList;
-
-        for (const auto& client : mClients)
+        //send list to new client
+        std::string listForNew;
+        for (auto& [key, addr] : mClients)
         {
-            if (client.first != clientKey)
+            if (key != clientKey)
             {
-                clientList += client.first + "\n";
+                listForNew += key + "\n";
             }
         }
 
-        if (!clientList.empty())
+        if (!listForNew.empty())
         {
-            std::cout << "Sending list of all clients to: " << clientKey << std::endl;
+            std::cout << "Sending full client list to: " << clientKey << std::endl;
+            sendto(
+                mSocket, 
+                listForNew.c_str(),
+                static_cast<int>(listForNew.size()),
+                0,
+                reinterpret_cast<sockaddr*>(&clientAddr),
+                sizeof(clientAddr));
+        }
 
-            sendto(mSocket, clientList.c_str(), clientList.size(), 0,
-                reinterpret_cast<const sockaddr*>(&clientAddr), sizeof(clientAddr));
+        //notify other clients about the new one
+        std::string newEntry = clientKey + "\n";
+        for (auto& [key, addr] : mClients)
+        {
+            if (key == clientKey) continue;
+            sendto(
+                mSocket,
+                newEntry.c_str(),
+                static_cast<int>(newEntry.size()),
+                0,
+                reinterpret_cast<const sockaddr*>(&addr),
+                sizeof(addr));
         }
     }
 }

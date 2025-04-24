@@ -106,13 +106,71 @@ int main(int argc, char* argv[])
 
         while (true)
         {
-            int bytesReceived = recvfrom(client.GetSocket(), buffer, sizeof(buffer) - 1, 0,
-                reinterpret_cast<sockaddr*>(&fromAddr), &fromLen);
+            int bytesReceived = recvfrom(
+                client.GetSocket(),
+                buffer,
+                sizeof(buffer) - 1,
+                0,
+                reinterpret_cast<sockaddr*>(&fromAddr),
+                &fromLen);
 
             if (bytesReceived > 0)
             {
-                buffer[bytesReceived] = '\0'; // Null terminate the received string
-                std::cout << "List of all other clients is: " << buffer << std::endl;
+                buffer[bytesReceived] = '\0';
+                std::string peerList(buffer);
+                std::cout << "Raw peer list:\n" << peerList << std::endl;
+
+                // parse each "ip:port" line
+                std::stringstream ss(peerList);
+                std::string line;
+                while (std::getline(ss, line))
+                {
+                    if (line.empty())
+                        continue;
+
+                    auto pos = line.find(':');
+                    if (pos == std::string::npos)
+                        continue;
+
+                    std::string peerIp = line.substr(0, pos);
+                    unsigned short peerPort = static_cast<unsigned short>(
+                        std::stoi(line.substr(pos + 1)));
+
+                    sockaddr_in peerAddr;
+                    std::memset(&peerAddr, 0, sizeof(peerAddr));
+                    peerAddr.sin_family = AF_INET;
+                    peerAddr.sin_port = htons(peerPort);
+                    inet_pton(AF_INET, peerIp.c_str(), &peerAddr.sin_addr);
+
+                    // hole punch
+                    for (int i = 0; i < 5; ++i)
+                    {
+                        int sent = sendto(
+                            client.GetSocket(),
+                            nullptr,    // zero-length payload
+                            0,
+                            0,
+                            reinterpret_cast<sockaddr*>(&peerAddr),
+                            sizeof(peerAddr)
+                        );
+
+                        if (sent == SOCKET_ERROR)
+                        {
+                            std::cerr << "[Punch ERROR] to "
+                                << peerIp << ":" << peerPort
+                                << " -> " << WSAGetLastError() << std::endl;
+                        }
+                        else
+                        {
+                            std::cout << "[Punch] sent hole-punch packet #"
+                                << (i + 1) << " to "
+                                << peerIp << ":" << peerPort
+                                << std::endl;
+                        }
+
+                        std::this_thread::sleep_for(std::chrono::milliseconds(200));
+                    }
+                }
             }
         }
     });
