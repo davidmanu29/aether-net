@@ -8,16 +8,14 @@ jobs:
   build-windows:
     runs-on: windows-latest
     strategy:
-      matrix: { build-type: [Debug, Release] }
+      matrix:
+        build-type: [Debug, Release]
 
     steps:
       - uses: actions/checkout@v3
 
       - name: Configure
-        run: cmake -S . -B build -A x64 \
-               -DCMAKE_BUILD_TYPE=${{ matrix.build-type }}
+        run: cmake -S . -B build -A x64 -DCMAKE_BUILD_TYPE=${{ matrix.build-type }}
 
       - name: Build all targets
-        run: cmake --build build \
-               --config ${{ matrix.build-type }} \
-               --parallel
+        run: cmake --build build --config ${{ matrix.build-type }} --parallel
