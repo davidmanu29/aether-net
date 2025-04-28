@@ -1,28 +1,21 @@
 name: CMake Windows Build
 
 on:
-  push:
-    branches: [ main ]
-  pull_request:
-    branches: [ main ]
+  push:    { branches: [main] }
+  pull_request: { branches: [main] }
 
 jobs:
   build-windows:
     runs-on: windows-latest
-    
     strategy:
       matrix:
         build-type: [Debug, Release]
 
     steps:
-      - name: Check out repository
-        uses: actions/checkout@v3
-        
-      - name: Configure with CMake
+      - uses: actions/checkout@v3
+
+      - name: Configure
         run: cmake -S . -B build -A x64 -DCMAKE_BUILD_TYPE=${{ matrix.build-type }}
 
-      - name: Build AetherNet Library
-        run: cmake --build build --config ${{ matrix.build-type }} --target AetherNet
-
-      - name: Build Executables
-        run: cmake --build build --config ${{ matrix.build-type }} --target UdpServerExe UdpClientExe
+      - name: Build all targets
+        run: cmake --build build --config ${{ matrix.build-type }} --parallel
