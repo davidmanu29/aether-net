@@ -1,4 +1,5 @@
 #include "UdpClient.h"
+#include "NatPuncher.h"
 #include <iostream>
 #include <cstring> 
 #include <thread>
@@ -121,6 +122,7 @@ int main(int argc, char* argv[])
                 std::cout << "Raw peer list:\n" << peerList << std::endl;
 
                 // parse each "ip:port" line
+                std::vector<sockaddr_in> peers;
                 std::stringstream ss(peerList);
                 std::string line;
                 while (std::getline(ss, line))
@@ -142,35 +144,11 @@ int main(int argc, char* argv[])
                     peerAddr.sin_port = htons(peerPort);
                     inet_pton(AF_INET, peerIp.c_str(), &peerAddr.sin_addr);
 
-                    // hole punch
-                    for (int i = 0; i < 5; ++i)
-                    {
-                        int sent = sendto(
-                            client.GetSocket(),
-                            nullptr,    // zero-length payload
-                            0,
-                            0,
-                            reinterpret_cast<sockaddr*>(&peerAddr),
-                            sizeof(peerAddr)
-                        );
-
-                        if (sent == SOCKET_ERROR)
-                        {
-                            std::cerr << "[Punch ERROR] to "
-                                << peerIp << ":" << peerPort
-                                << " -> " << WSAGetLastError() << std::endl;
-                        }
-                        else
-                        {
-                            std::cout << "[Punch] sent hole-punch packet #"
-                                << (i + 1) << " to "
-                                << peerIp << ":" << peerPort
-                                << std::endl;
-                        }
-
-                        std::this_thread::sleep_for(std::chrono::milliseconds(200));
-                    }
+                    peers.push_back(peerAddr);
                 }
+
+                AetherNet::NatPuncher puncher(client.GetSocket());
+                puncher.punchAll(peers);
             }
         }
     });

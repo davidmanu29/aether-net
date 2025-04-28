@@ -21,7 +21,7 @@ UdpServer::~UdpServer()
 bool UdpServer::init()
 {
     WSAData wsaData;
-    int result = WSAStartup(MAKEWORD(2, 2), &wsaData);
+    int result = WSAStartup(MAKEWORD(2, 2), &wsaData); //initialize network stack
 
     if (result != 0)
     {
@@ -30,6 +30,7 @@ bool UdpServer::init()
         return false;
     }
 
+    //create UDP socket, this will be bound to a well-known port, such that all clients can see and access it
     mSocket = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
 
     if (mSocket == INVALID_SOCKET)
@@ -38,13 +39,14 @@ bool UdpServer::init()
         WSACleanup();
         return false;
     }
-
+    
     sockaddr_in serverAddr;
     std::memset(&serverAddr, 0, sizeof(serverAddr));
     serverAddr.sin_family = AF_INET;
     serverAddr.sin_addr.s_addr = INADDR_ANY;
     serverAddr.sin_port = htons(mPort);
 
+    //bind socket address to well-known server address in order to simplify the initial connection of all clients
     if (bind(mSocket, reinterpret_cast<sockaddr*>(&serverAddr), sizeof(serverAddr)) == SOCKET_ERROR)
     {
         std::cerr << "Bind failed: " << WSAGetLastError() << std::endl;
@@ -76,6 +78,7 @@ void UdpServer::run()
         std::memset(&clientAddr, 0, clientAddrSize);
         std::memset(buffer, 0, sizeof(buffer));
 
+        //receives packets from clients. This will be the initial packets
         int bytesReceived = recvfrom(mSocket, buffer, sizeof(buffer) - 1, 0,
             reinterpret_cast<sockaddr*>(&clientAddr), &clientAddrSize);
 
@@ -86,10 +89,12 @@ void UdpServer::run()
         }
         buffer[bytesReceived] = '\0'; // ensure null terminated string
 
+        //extract and convert client IP to a string
         char clientIp[INET_ADDRSTRLEN];
         inet_ntop(AF_INET, &clientAddr.sin_addr, clientIp, INET_ADDRSTRLEN);
         int clientPort = ntohs(clientAddr.sin_port);
 
+        //create clientKey string which will be of format x.x.x.x:port
         std::string clientKey = std::string(clientIp) + ":" + std::to_string(clientPort);
 
         mClients[clientKey] = clientAddr;
@@ -107,6 +112,7 @@ void UdpServer::run()
         if (!listForNew.empty())
         {
             std::cout << "Sending full client list to: " << clientKey << std::endl;
+
             sendto(
                 mSocket, 
                 listForNew.c_str(),
@@ -121,6 +127,7 @@ void UdpServer::run()
         for (auto& [key, addr] : mClients)
         {
             if (key == clientKey) continue;
+
             sendto(
                 mSocket,
                 newEntry.c_str(),

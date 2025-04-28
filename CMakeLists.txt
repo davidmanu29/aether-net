@@ -16,7 +16,9 @@ add_library(AetherNet SHARED
     src/SocketUtil.cpp
     src/SocketAddress.cpp
     src/SocketAddressFactory.cpp
+    src/NatPuncher.cpp
     include/UdpServer.h
+    include/NatPuncher.h
     include/UdpClient.h
     include/SocketUtil.h
     include/SocketAddress.h
