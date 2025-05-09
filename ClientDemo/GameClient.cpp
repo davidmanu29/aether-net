@@ -5,8 +5,8 @@
 #include <thread>
 #include <WinSock2.h>
 
-GameClient::GameClient(uint32_t id, const std::string& serverIp, unsigned short serverPort)
-	:mUdpClient(serverIp, serverPort)
+GameClient::GameClient(uint32_t id, const std::string& serverEndpoint)
+	: mUdpClient(serverEndpoint)
 	, mGClientId(id)
 { }
 
@@ -78,16 +78,9 @@ void GameClient::NetworkLoop()
 
 	// 2) receive the server’s peer-list (text "ip:port\n...")
 	char textBuf[1024];
-	sockaddr_in from;
-	int fromLen = sizeof(from);
+	AetherNet::SocketAddress fromAddr(0, 0);
 
-	int n = recvfrom(
-		mUdpClient.GetSocket(),
-		textBuf, sizeof(textBuf) - 1,
-		0,
-		reinterpret_cast<sockaddr*>(&from),
-		&fromLen
-	);
+	int n = mUdpClient.GetSocket()->ReceiveFrom(textBuf, sizeof(textBuf), fromAddr);
 	if (n <= 0)
 	{
 		std::cerr << "Did not receive peer list\n";
@@ -103,42 +96,63 @@ void GameClient::NetworkLoop()
 		while (std::getline(ss, line))
 		{
 			if (line.empty()) continue;
-			auto pos = line.find(':');
-			sockaddr_in peer{};
-			peer.sin_family = AF_INET;
-			peer.sin_port = htons((unsigned short)std::stoi(line.substr(pos + 1)));
-			inet_pton(AF_INET, line.substr(0, pos).c_str(), &peer.sin_addr);
-			mPeers.push_back(peer);
+
+			if (auto peer = AetherNet::SocketAddressFactory::CreateIPv4FromString(line))
+				mPeers.push_back(peer);
 		}
 	}
 
 	// 3) hole-punch all peers once
 	mPuncher->punchAll(mPeers);
 
-	char pktBuf[MOVE_PACKET_SIZE];
+	// 4) now consume _both_ binary MOVE packets and any future text updates
+	char recvBuf[1024];
 	while (mRunning)
 	{
-		int bytes = recvfrom(
-			mUdpClient.GetSocket(),
-			pktBuf,
-			MOVE_PACKET_SIZE,
-			0,
-			reinterpret_cast<sockaddr*>(&from),
-			&fromLen);
+		int bytes = mUdpClient.GetSocket()
+			->ReceiveFrom(recvBuf, sizeof(recvBuf), fromAddr);
+
+		if (bytes < 0)
+		{
+			int err = -bytes;
+			// silently ignore “message too long” (EMSGSIZE = 10040)
+			if (err != WSAEMSGSIZE)
+				std::cerr << "ReceiveFrom error: " << err << "\n";
+			continue;
+		}
 
 		if (bytes == (int)MOVE_PACKET_SIZE)
 		{
-			auto const* p = reinterpret_cast<const MovePacket*>(pktBuf);
+			// exactly one MOVE packet
+			auto const* p = reinterpret_cast<const MovePacket*>(recvBuf);
 			if (p->type == static_cast<uint8_t>(Action::MOVE))
 			{
-				uint32_t actorId = ntohl(p->actorId);
-				float    x = aethernet_ntohf(p->x);
-				float    y = aethernet_ntohf(p->y);
-
-				std::lock_guard lk(mMutex);
-				mActors[actorId] = { x, y };
+				MovePacket copy;
+				copy.type = p->type;
+				copy.actorId = ntohl(p->actorId);
+				copy.x = aethernet_ntohf(p->x);
+				copy.y = aethernet_ntohf(p->y);
+				ProcessIncomingReq(copy);
 			}
 		}
+		else if (bytes > 0)
+		{
+			// some other text message (e.g. a new peer joined/left)
+			recvBuf[bytes] = '\0';
+			std::lock_guard lk(mMutex);
+			std::stringstream ss(recvBuf);
+			std::string line;
+			mPeers.clear();
+			while (std::getline(ss, line))
+			{
+				if (line.empty()) continue;
+				if (auto peer = AetherNet::SocketAddressFactory::CreateIPv4FromString(line))
+					mPeers.push_back(peer);
+			}
+			// re–punch in case peers changed
+			mPuncher->punchAll(mPeers);
+		}
+		// else bytes==0: empty datagram? ignore
 	}
 }
 
@@ -173,14 +187,7 @@ void GameClient::BroadcastPosition()
 
 	for (auto& peer : mPeers)
 	{
-		sendto(
-			mUdpClient.GetSocket(),
-			reinterpret_cast<const char*>(&packet),
-			MOVE_PACKET_SIZE,
-			0,
-			reinterpret_cast<const sockaddr*>(&peer),
-			sizeof(peer)
-		);
+		mUdpClient.GetSocket()->SendTo(&packet, MOVE_PACKET_SIZE, *peer);
 	}
 }
 

@@ -1,57 +1,31 @@
 #include "UdpServer.h"
-#include <iostream>
-#include <cstring>
 
-UdpServer::UdpServer(unsigned short port)
-	: mSocket(INVALID_SOCKET), mPort(port), mInitialized(false)
+AetherNet::UdpServer::UdpServer(unsigned short port)
+	: mBindAddr(AetherNet::SocketAddressFactory::CreateIPv4FromString("0.0.0.0:" + std::to_string(port)))
 {
-
-}
-
-UdpServer::~UdpServer()
-{
-    if (mSocket != INVALID_SOCKET)
+    if (!mBindAddr)
     {
-        closesocket(mSocket);
+        std::cerr << "UdpServer: invalid bind address\n";
     }
-
-    WSACleanup();
 }
 
-bool UdpServer::init()
+AetherNet::UdpServer::~UdpServer()
 {
-    WSAData wsaData;
-    int result = WSAStartup(MAKEWORD(2, 2), &wsaData); //initialize network stack
+    mSocket.reset();
+}
 
-    if (result != 0)
+bool AetherNet::UdpServer::init()
+{
+    mSocket = AetherNet::SocketUtil::CreateUDPSocket();
+    if (!mSocket)
     {
-        std::cerr << "Socket creation failed: " << WSAGetLastError() << std::endl;
-        WSACleanup();
+        std::cerr << "UdpServer::init: failed to create socket\n";
         return false;
     }
 
-    //create UDP socket, this will be bound to a well-known port, such that all clients can see and access it
-    mSocket = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
-
-    if (mSocket == INVALID_SOCKET)
+    if (int err = mSocket->Bind(*mBindAddr); err != 0)
     {
-        std::cerr << "Socket creation failed: " << WSAGetLastError() << std::endl;
-        WSACleanup();
-        return false;
-    }
-    
-    sockaddr_in serverAddr;
-    std::memset(&serverAddr, 0, sizeof(serverAddr));
-    serverAddr.sin_family = AF_INET;
-    serverAddr.sin_addr.s_addr = INADDR_ANY;
-    serverAddr.sin_port = htons(mPort);
-
-    //bind socket address to well-known server address in order to simplify the initial connection of all clients
-    if (bind(mSocket, reinterpret_cast<sockaddr*>(&serverAddr), sizeof(serverAddr)) == SOCKET_ERROR)
-    {
-        std::cerr << "Bind failed: " << WSAGetLastError() << std::endl;
-        closesocket(mSocket);
-        WSACleanup();
+        std::cerr << "UdpServer::init: bind failed (" << err << ")\n";
         return false;
     }
 
@@ -59,82 +33,77 @@ bool UdpServer::init()
     return true;
 }
 
-void UdpServer::run()
+void AetherNet::UdpServer::run()
 {
     if (!mInitialized)
     {
-        std::cerr << "Server not initialized." << std::endl;
+        std::cerr << "UdpServer::run called before init()\n";
         return;
     }
 
-    sockaddr_in clientAddr;
-    int clientAddrSize = sizeof(clientAddr);
-    char buffer[1024];
+    // Log the bind address using the public getters
+    {
+        in_addr in;
+        in.s_addr = htonl(mBindAddr->GetIPv4Address());
 
-    std::cout << "UDP Server running on port " << mPort << ". Waiting for messages..." << std::endl;
+        char ipStr[INET_ADDRSTRLEN];
+        inet_ntop(AF_INET, &in, ipStr, sizeof(ipStr));
+
+        std::cout << "UDP Server listening on "
+            << ipStr << ":" << mBindAddr->GetPort()
+            << std::endl;
+    }
+
+    char buffer[1024];
+    AetherNet::SocketAddress fromAddr(0, 0);
 
     while (true)
     {
-        std::memset(&clientAddr, 0, clientAddrSize);
-        std::memset(buffer, 0, sizeof(buffer));
-
-        //receives packets from clients. This will be the initial packets
-        int bytesReceived = recvfrom(mSocket, buffer, sizeof(buffer) - 1, 0,
-            reinterpret_cast<sockaddr*>(&clientAddr), &clientAddrSize);
-
-        if (bytesReceived == SOCKET_ERROR)
+        int bytes = mSocket->ReceiveFrom(buffer, sizeof(buffer) - 1, fromAddr);
+        if (bytes < 0)
         {
-            std::cerr << "recvfrom failed: " << WSAGetLastError() << std::endl;
             continue;
         }
-        buffer[bytesReceived] = '\0'; // ensure null terminated string
 
-        //extract and convert client IP to a string
-        char clientIp[INET_ADDRSTRLEN];
-        inet_ntop(AF_INET, &clientAddr.sin_addr, clientIp, INET_ADDRSTRLEN);
-        int clientPort = ntohs(clientAddr.sin_port);
+        buffer[bytes] = '\0';
 
-        //create clientKey string which will be of format x.x.x.x:port
-        std::string clientKey = std::string(clientIp) + ":" + std::to_string(clientPort);
-
-        mClients[clientKey] = clientAddr;
-
-        //send list to new client
-        std::string listForNew;
-        for (auto& [key, addr] : mClients)
         {
-            if (key != clientKey)
+            in_addr in;
+            in.s_addr = htonl(fromAddr.GetIPv4Address());
+
+            char ipStr[INET_ADDRSTRLEN];
+            inet_ntop(AF_INET, &in, ipStr, sizeof(ipStr));
+
+            int port = fromAddr.GetPort();
+            std::string key = std::string(ipStr) + ":" + std::to_string(port);
+
             {
-                listForNew += key + "\n";
+                uint32_t ip_h = fromAddr.GetIPv4Address();
+                uint16_t port = fromAddr.GetPort();
+                mClients[key] = std::make_shared<AetherNet::SocketAddress>(ip_h, port);
             }
-        }
 
-        if (!listForNew.empty())
-        {
-            std::cout << "Sending full client list to: " << clientKey << std::endl;
+            std::string listForNew;
+            for (auto& [k, addr] : mClients)
+                if (k != key)
+                    listForNew += k + "\n";
 
-            sendto(
-                mSocket, 
-                listForNew.c_str(),
-                static_cast<int>(listForNew.size()),
-                0,
-                reinterpret_cast<sockaddr*>(&clientAddr),
-                sizeof(clientAddr));
-        }
+            if (!listForNew.empty())
+            {
+                mSocket->SendTo(listForNew.data(),
+                    (int)listForNew.size(),
+                    fromAddr);
+            }
 
-        //notify other clients about the new one
-        std::string newEntry = clientKey + "\n";
-        for (auto& [key, addr] : mClients)
-        {
-            if (key == clientKey) continue;
-
-            sendto(
-                mSocket,
-                newEntry.c_str(),
-                static_cast<int>(newEntry.size()),
-                0,
-                reinterpret_cast<const sockaddr*>(&addr),
-                sizeof(addr));
+            std::string notif = key + "\n";
+            for (auto& [k, peerAddrPtr] : mClients)
+            {
+                mSocket->SendTo(
+                    notif.data(),
+                    (int)notif.size(),
+                    *peerAddrPtr
+                    );
+            }
         }
     }
 }
@@ -142,7 +111,7 @@ void UdpServer::run()
 #ifdef UDPSERVER_MAIN
 int main()
 {
-    UdpServer server(54000);
+    AetherNet::UdpServer server(54000);
 
     if (!server.init())
     {

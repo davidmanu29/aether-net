@@ -20,7 +20,7 @@ struct Actor
 class GameClient
 {
 public:
-	GameClient(uint32_t id, const std::string& serverIp, unsigned short serverPort);
+	GameClient(uint32_t id, const std::string& serverEndpoint);
 	~GameClient();
 
 	bool init();
@@ -32,7 +32,7 @@ private:
 	GLFWwindow* mWindow = nullptr;
 
 	std::unordered_map<uint32_t, Actor> mActors;
-	std::vector<sockaddr_in> mPeers;
+	std::vector<AetherNet::SocketAddressPtr> mPeers;
 	std::string mKey;
 	std::mutex mMutex;
 	std::atomic<bool> mRunning{ false };
