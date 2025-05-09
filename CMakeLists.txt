@@ -9,6 +9,20 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
+include(FetchContent)
+
+FetchContent_Declare(
+    glfw
+    GIT_REPOSITORY https://github.com/glfw/glfw.git
+    GIT_TAG 3.3.8
+)
+
+set(GLFW_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+set(GLFW_BUILD_TESTS    OFF CACHE BOOL "" FORCE)
+set(GLFW_BUILD_DOCS     OFF CACHE BOOL "" FORCE)
+
+FetchContent_MakeAvailable(glfw)
+
 add_library(AetherNet SHARED
     src/UdpClient.cpp
     src/AetherNet.cpp
@@ -43,6 +57,19 @@ add_executable(UdpServerExe src/UdpServer.cpp)
 target_link_libraries(UdpServerExe PRIVATE AetherNet ws2_32)
 target_compile_definitions(UdpServerExe PRIVATE UDPSERVER_MAIN)
 
-add_executable(UdpClientExe src/UdpClient.cpp)
-target_link_libraries(UdpClientExe PRIVATE AetherNet ws2_32)
+find_package(OpenGL REQUIRED)
+
+add_executable(UdpClientExe 
+    ClientDemo/main.cpp
+    ClientDemo/GameClient.cpp
+    ClientDemo/GameClient.h
+    ClientDemo/UdpProtocol.h
+)
+
+target_include_directories(UdpClientExe
+    PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/include
+        ${CMAKE_CURRENT_SOURCE_DIR}/ClientDemo
+)
+target_link_libraries(UdpClientExe PRIVATE AetherNet ws2_32 glfw OpenGL::GL)
 target_compile_definitions(UdpClientExe PRIVATE UDPCLIENT_MAIN)
