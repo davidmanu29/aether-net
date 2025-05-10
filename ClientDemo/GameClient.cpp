@@ -96,9 +96,9 @@ void GameClient::NetworkLoop()
 		while (std::getline(ss, line))
 		{
 			if (line.empty()) continue;
-
-			if (auto peer = AetherNet::SocketAddressFactory::CreateIPv4FromString(line))
-				mPeers.push_back(peer);
+			auto peer = AetherNet::SocketAddressFactory::CreateIPv4FromString(line);
+			std::cout << "[NetworkLoop] discovered peer: " << line << "\n";
+			mPeers.push_back(peer);
 		}
 	}
 
@@ -115,9 +115,11 @@ void GameClient::NetworkLoop()
 		if (bytes < 0)
 		{
 			int err = -bytes;
-			// silently ignore “message too long” (EMSGSIZE = 10040)
+
 			if (err != WSAEMSGSIZE)
-				std::cerr << "ReceiveFrom error: " << err << "\n";
+				continue;
+
+			std::cerr << "ReceiveFrom error: " << err << "\n";
 			continue;
 		}
 
@@ -127,12 +129,12 @@ void GameClient::NetworkLoop()
 			auto const* p = reinterpret_cast<const MovePacket*>(recvBuf);
 			if (p->type == static_cast<uint8_t>(Action::MOVE))
 			{
-				MovePacket copy;
-				copy.type = p->type;
-				copy.actorId = ntohl(p->actorId);
-				copy.x = aethernet_ntohf(p->x);
-				copy.y = aethernet_ntohf(p->y);
-				ProcessIncomingReq(copy);
+				uint32_t actorId = ntohl(p->actorId);
+				float x = aethernet_ntohf(p->x);
+				float y = aethernet_ntohf(p->y);
+
+				std::lock_guard lk(mMutex);
+				mActors[actorId] = { x, y };
 			}
 		}
 		else if (bytes > 0)
@@ -185,11 +187,21 @@ void GameClient::BroadcastPosition()
 	packet.x = aethernet_htonf(mActors[mGClientId].x);
 	packet.y = aethernet_htonf(mActors[mGClientId].y);
 
-	for (auto& peer : mPeers)
+	for (auto const& peerPtr : mPeers)
 	{
-		mUdpClient.GetSocket()->SendTo(&packet, MOVE_PACKET_SIZE, *peer);
+		std::cout << "[Broadcast] sending to "
+			<< peerPtr->GetIPv4Address() << ":" << peerPtr->GetPort()
+			<< "  x=" << mActors[mGClientId].x
+			<< " y=" << mActors[mGClientId].y << "\n";
+
+		mUdpClient.GetSocket()->SendTo(
+			&packet,
+			MOVE_PACKET_SIZE,
+			*peerPtr       
+		);
 	}
 }
+
 
 void GameClient::RenderFrame()
 {

@@ -83,26 +83,24 @@ void AetherNet::UdpServer::run()
                 mClients[key] = std::make_shared<AetherNet::SocketAddress>(ip_h, port);
             }
 
-            std::string listForNew;
-            for (auto& [k, addr] : mClients)
-                if (k != key)
-                    listForNew += k + "\n";
-
-            if (!listForNew.empty())
+            for (auto& [recipientKey, recipientAddr] : mClients)
             {
-                mSocket->SendTo(listForNew.data(),
-                    (int)listForNew.size(),
-                    fromAddr);
-            }
+                std::string fullList;
+                for (auto& [peerKey, peerAddr] : mClients)
+                {
+                    if (peerKey == recipientKey)
+                        continue;
+                    fullList += peerKey + "\n";
+                }
 
-            std::string notif = key + "\n";
-            for (auto& [k, peerAddrPtr] : mClients)
-            {
-                mSocket->SendTo(
-                    notif.data(),
-                    (int)notif.size(),
-                    *peerAddrPtr
+                if (!fullList.empty())
+                {
+                    mSocket->SendTo(
+                        fullList.data(),
+                        static_cast<int>(fullList.size()),
+                        *recipientAddr
                     );
+                }
             }
         }
     }
