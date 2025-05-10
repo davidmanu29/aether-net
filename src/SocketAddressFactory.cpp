@@ -1,6 +1,6 @@
 #include "SocketAddressFactory.h"
 
-SocketAddressPtr SocketAddressFactory::CreateIPv4FromString(const std::string& inString)
+AetherNet::SocketAddressPtr AetherNet::SocketAddressFactory::CreateIPv4FromString(const std::string& inString)
 {
 	size_t pos = inString.find_last_of(':');
 	std::string host, service;

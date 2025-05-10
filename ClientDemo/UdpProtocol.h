@@ -14,8 +14,8 @@ struct MovePacket
 {
 	uint8_t type;
 	uint32_t actorId;
-	float x;
-	float y;
+	uint32_t x;
+	uint32_t y;
 };
 #pragma pack(pop)
 

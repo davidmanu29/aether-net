@@ -11,11 +11,20 @@ int main(int argc, char** argv)
 
     uint32_t myId = static_cast<uint32_t>(std::stoi(argv[1]));
     std::string serverIp = argv[2];
-    unsigned short port = (argc >= 4) ? (unsigned short)std::stoi(argv[3]) : 54000;
+    unsigned short port = (argc >= 4)
+        ? static_cast<unsigned short>(std::stoi(argv[3]))
+        : 54000u;
 
-    GameClient app(myId, serverIp, port);
+    std::string endpoint = serverIp + ":" + std::to_string(port);
 
-    if (!app.init()) return 1;
+    GameClient app(myId, endpoint);
+
+    if (!app.init())
+    {
+        std::cerr << "Failed to initialize GameClient\n";
+        return 1;
+    }
+
     app.run();
 
     return 0;

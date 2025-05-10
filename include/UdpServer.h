@@ -2,29 +2,42 @@
 
 #include "AetherNetExport.h"
 
+#include "WinsockInitializer.h"
+#include "UdpSocket.h"
+#include "SocketAddress.h"
+#include "SocketAddressFactory.h"
+#include "SocketUtil.h"
+
 #include <string>
 #include <unordered_map>
 #include <WinSock2.h>
 #include <WS2tcpip.h>
+#include <iostream>
+#include <cstring>
 
-class UdpServer
+namespace AetherNet
 {
-public:
-	explicit UdpServer(unsigned short port = 54000);
+	class AETHERNET_API UdpServer
+	{
+	public:
+		explicit UdpServer(unsigned short port = 54000);
 
-	~UdpServer();
+		~UdpServer();
 
-	bool init();
-	void run();
+		bool init();
+		void run();
 
-private:
+	private:
+		WinsockInitializer mWinsock;
+		AetherNet::UdpSocketPtr mSocket;
+		AetherNet::SocketAddressPtr mBindAddr;
+		bool mInitialized{ false };
 
-	SOCKET mSocket;
-	unsigned short mPort;
-	bool mInitialized;
-	std::unordered_map<std::string, sockaddr_in> mClients;
+		std::unordered_map<std::string, AetherNet::SocketAddressPtr> mClients;
 
-	//no copy-construction or assignment operation should be available
-	UdpServer(const UdpServer&) = delete;
-	UdpServer& operator=(const UdpServer&) = delete;
-};
+		//no copy-construction or assignment operation should be available
+		UdpServer(const UdpServer&) = delete;
+		UdpServer& operator=(const UdpServer&) = delete;
+	};
+}
+

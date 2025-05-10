@@ -4,55 +4,36 @@
 #include <cstring> 
 #include <thread>
 
-UdpClient::UdpClient(const std::string& serverIp, unsigned short port)
-    : mSocket(INVALID_SOCKET), mInitialized(false)
+UdpClient::UdpClient(const std::string& serverEndpoint)
+    : mServerAddr(AetherNet::SocketAddressFactory::CreateIPv4FromString(serverEndpoint)), mInitialized(false)
 {
-    std::memset(&mServer, 0, sizeof(mServer));
-    mServer.sin_family = AF_INET;
-    mServer.sin_port = htons(port);
-
-    if (inet_pton(AF_INET, serverIp.c_str(), &mServer.sin_addr) <= 0)
+    if (!mServerAddr)
     {
-        std::cerr << "Invalid server IP address." << std::endl;
+        std::cerr << "Invalid server endpoint: " << serverEndpoint << "\n";
     }
 }
 
 UdpClient::~UdpClient()
 {
-    if (mSocket != INVALID_SOCKET)
-    {
-        closesocket(mSocket);
-    }
-    WSACleanup();
+    if (mSocket) mSocket.reset();
+}
+
+AetherNet::UdpSocketPtr UdpClient::GetSocket() const
+{
+    return mSocket;
 }
 
 bool UdpClient::init()
 {
-    WSADATA wsaData;
-    int result = WSAStartup(MAKEWORD(2, 2), &wsaData);
-
-    if (result != 0)
+    mSocket = AetherNet::SocketUtil::CreateUDPSocket();
+    if (!mSocket)
     {
-        std::cerr << "WSAStartup failed: " << result << std::endl;
-        return false;
-    }
-
-    mSocket = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
-
-    if (mSocket == INVALID_SOCKET)
-    {
-        std::cerr << "Socket creation failed: " << WSAGetLastError() << std::endl;
-        WSACleanup();
+        std::cerr << "Failed to create UDP socket\n";
         return false;
     }
 
     mInitialized = true;
     return true;
-}
-
-SOCKET UdpClient::GetSocket()
-{
-    return mSocket;
 }
 
 bool UdpClient::sendMessage(const std::string& message)
@@ -63,14 +44,9 @@ bool UdpClient::sendMessage(const std::string& message)
         return false;
     }
 
-    int sendOk = sendto(mSocket, message.c_str(), static_cast<int>(message.size() + 1), 0,
-        reinterpret_cast<sockaddr*>(&mServer), sizeof(mServer));
+    int sent = mSocket->SendTo(message.data(), (int)message.size() + 1, *mServerAddr);
 
-    if (sendOk == SOCKET_ERROR)
-    {
-        std::cerr << "sendto failed: " << WSAGetLastError() << std::endl;
-        return false;
-    }
+    if (sent < 0) return false;
 
     return true;
 }

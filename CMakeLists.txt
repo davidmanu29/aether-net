@@ -27,6 +27,7 @@ add_library(AetherNet SHARED
     src/UdpClient.cpp
     src/AetherNet.cpp
     src/UdpSocket.cpp
+    src/UdpServer.cpp
     src/SocketUtil.cpp
     src/SocketAddress.cpp
     src/SocketAddressFactory.cpp
@@ -34,11 +35,13 @@ add_library(AetherNet SHARED
     include/UdpServer.h
     include/NatPuncher.h
     include/UdpClient.h
+    include/UdpServer.h
     include/SocketUtil.h
     include/SocketAddress.h
     include/AetherNetExport.h
     include/UdpSocket.h
     include/SocketAddressFactory.h
+    include/WinsockInitializer.h
 )
 
 target_include_directories(AetherNet
@@ -53,7 +56,7 @@ target_compile_definitions(AetherNet
 
 target_link_libraries(AetherNet PRIVATE ws2_32)
 
-add_executable(UdpServerExe src/UdpServer.cpp)
+add_executable(UdpServerExe src/server_main.cpp)
 target_link_libraries(UdpServerExe PRIVATE AetherNet ws2_32)
 target_compile_definitions(UdpServerExe PRIVATE UDPSERVER_MAIN)
 
