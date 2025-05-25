@@ -1,5 +1,6 @@
 #pragma once
 
+#include "AetherNetExport.h"
 #include "SocketAddress.h"
 
 #include <winsock2.h>
@@ -8,18 +9,21 @@
 
 class SocketUtil;
 
-class UdpSocket
+namespace AetherNet
 {
-public:
-	~UdpSocket();
-	int Bind(const SocketAddress& inToAddress);
-	int SendTo(const void* inData, int inLen, const SocketAddress& inTo);
-	int ReceiveFrom(void* inBuffer, int inLen, SocketAddress& outFrom);
+	class AETHERNET_API  UdpSocket
+	{
+	public:
+		UdpSocket(SOCKET inSocket) : mSocket(inSocket) {}
+		~UdpSocket();
+		int Bind(const SocketAddress& inToAddress);
+		int SendTo(const void* inData, int inLen, const SocketAddress& inTo);
+		int ReceiveFrom(void* inBuffer, int inLen, SocketAddress& outFrom);
 
-private:
-	friend class SocketUtil;
-	UdpSocket(SOCKET inSocket) : mSocket(inSocket) {}
-	SOCKET mSocket;
-};
+	private:
+		friend class SocketUtil;
+		SOCKET mSocket;
+	};
 
-typedef std::shared_ptr<UdpSocket> UdpSocketPtr;
+	typedef std::shared_ptr<UdpSocket> UdpSocketPtr;
+}

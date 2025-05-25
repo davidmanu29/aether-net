@@ -1,12 +1,12 @@
 #include "UdpSocket.h"
 #include "SocketUtil.h"
 
-UdpSocket::~UdpSocket()
+AetherNet::UdpSocket::~UdpSocket()
 {
-
+    closesocket(mSocket);
 }
 
-int UdpSocket::Bind(const SocketAddress& inBindAddress)
+int AetherNet::UdpSocket::Bind(const SocketAddress& inBindAddress)
 {
     int err = bind(mSocket, &inBindAddress.mSockAddr, inBindAddress.GetSize());
     if (err != 0)
@@ -17,7 +17,7 @@ int UdpSocket::Bind(const SocketAddress& inBindAddress)
     return 0;
 }
 
-int UdpSocket::SendTo(const void* inData, int inLen, const SocketAddress& inTo)
+int AetherNet::UdpSocket::SendTo(const void* inData, int inLen, const SocketAddress& inTo)
 {
     int byteSentCount = sendto(mSocket,
         static_cast<const char*>(inData),
@@ -25,6 +25,7 @@ int UdpSocket::SendTo(const void* inData, int inLen, const SocketAddress& inTo)
         0,
         &inTo.mSockAddr,
         inTo.GetSize());
+
     if (byteSentCount >= 0)
     {
         return byteSentCount;
@@ -36,7 +37,7 @@ int UdpSocket::SendTo(const void* inData, int inLen, const SocketAddress& inTo)
     }
 }
 
-int UdpSocket::ReceiveFrom(void* inBuffer, int inLen, SocketAddress& outFrom)
+int AetherNet::UdpSocket::ReceiveFrom(void* inBuffer, int inLen, SocketAddress& outFrom)
 {
     int fromLength = outFrom.GetSize();
     int readByteCount = recvfrom(mSocket,

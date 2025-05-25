@@ -1,9 +1,11 @@
 #pragma once
 
 #include <GLFW/glfw3.h>
+
 #include "UdpClient.h"
 #include "NatPuncher.h"
 #include "UdpProtocol.h"
+#include "SecurityService.h"
 
 #include <unordered_map>
 #include <mutex>
@@ -20,7 +22,7 @@ struct Actor
 class GameClient
 {
 public:
-	GameClient(uint32_t id, const std::string& serverIp, unsigned short serverPort);
+	GameClient(uint32_t id, const std::string& serverEndpoint);
 	~GameClient();
 
 	bool init();
@@ -32,7 +34,7 @@ private:
 	GLFWwindow* mWindow = nullptr;
 
 	std::unordered_map<uint32_t, Actor> mActors;
-	std::vector<sockaddr_in> mPeers;
+	std::vector<std::pair<uint32_t, AetherNet::SocketAddressPtr>> mPeers;
 	std::string mKey;
 	std::mutex mMutex;
 	std::atomic<bool> mRunning{ false };
@@ -44,6 +46,11 @@ private:
 	void HandleInput(float dt);
 	void BroadcastPosition();
 	void RenderFrame();
+
+	int mPrivateKey; //Diffie-Hellman random generated key
+	int mPublicKey; //Compute public key;
+	std::string mSessionKey; 
+	std::unordered_map<uint32_t, int> mSharedKeys;
 };
 
 

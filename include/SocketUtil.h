@@ -1,5 +1,7 @@
 #pragma once
 
+#include "AetherNetExport.h"
+
 #include <winsock2.h>
 #include <ws2tcpip.h>
 
@@ -7,11 +9,14 @@
 #include <memory>
 #include "UdpSocket.h"
 
-class SocketUtil
+namespace AetherNet
 {
-public:
-    static void ReportError(const std::wstring& inErrorMsg);
-    static int GetLastError();
+    class AETHERNET_API  SocketUtil
+    {
+    public:
+        static void ReportError(const std::wstring& inErrorMsg);
+        static int GetLastError();
 
-    static UdpSocketPtr CreateUDPSocket();
-};
+        static UdpSocketPtr CreateUDPSocket();
+    };
+}
