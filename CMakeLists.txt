@@ -9,6 +9,8 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
+enable_testing()
+
 include(FetchContent)
 
 FetchContent_Declare(
@@ -22,6 +24,17 @@ set(GLFW_BUILD_TESTS    OFF CACHE BOOL "" FORCE)
 set(GLFW_BUILD_DOCS     OFF CACHE BOOL "" FORCE)
 
 FetchContent_MakeAvailable(glfw)
+
+FetchContent_Declare(
+  googletest
+  GIT_REPOSITORY https://github.com/google/googletest.git
+  GIT_TAG        v1.14.0
+)
+
+set(INSTALL_GTEST  OFF CACHE BOOL "" FORCE)
+set(BUILD_GMOCK    OFF CACHE BOOL "" FORCE)
+
+FetchContent_MakeAvailable(googletest)
 
 add_library(AetherNet SHARED
     src/UdpClient.cpp
@@ -67,6 +80,7 @@ add_executable(UdpClientExe
     ClientDemo/GameClient.cpp
     ClientDemo/GameClient.h
     ClientDemo/UdpProtocol.h
+    ClientDemo/SecurityService.h
 )
 
 target_include_directories(UdpClientExe
@@ -76,3 +90,18 @@ target_include_directories(UdpClientExe
 )
 target_link_libraries(UdpClientExe PRIVATE AetherNet ws2_32 glfw OpenGL::GL)
 target_compile_definitions(UdpClientExe PRIVATE UDPCLIENT_MAIN)
+
+add_executable(AetherNet_tests
+    tests/SocketAddress_test.cpp
+    tests/UdpSocket_test.cpp
+)
+target_include_directories(AetherNet_tests
+    PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include
+)
+target_link_libraries(AetherNet_tests
+    PRIVATE AetherNet GTest::gtest_main ws2_32
+)
+include(GoogleTest)
+gtest_discover_tests(AetherNet_tests
+    PROPERTIES LABELS unit
+)

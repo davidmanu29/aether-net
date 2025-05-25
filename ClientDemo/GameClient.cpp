@@ -1,4 +1,5 @@
 #include "GameClient.h"
+
 #include <iostream>
 #include <sstream>
 #include <chrono>
@@ -56,6 +57,9 @@ bool GameClient::init()
 	glfwMakeContextCurrent(mWindow);
 	glfwSwapInterval(1);
 
+	mPrivateKey = SecurityService::GenPrivate();
+	mPublicKey = SecurityService::ComputePublic(mPrivateKey);
+
 	mRunning = true;
 	std::thread(&GameClient::NetworkLoop, this).detach();
 
@@ -70,13 +74,13 @@ bool GameClient::init()
 void GameClient::NetworkLoop()
 {
 	// 1) tell the rendezvous server who you are
-	if (!mUdpClient.sendMessage("REGISTER\n"))
+	if (!mUdpClient.sendMessage("REGISTER " + std::to_string(mGClientId) + "\n"))
 	{
 		std::cerr << "Failed to register with server\n";
 		return;
 	}
 
-	// 2) receive the server’s peer-list (text "ip:port\n...")
+	// 2) receive the server's peer-list (text "ip:port\n...")
 	char textBuf[1024];
 	AetherNet::SocketAddress fromAddr(0, 0);
 
@@ -90,22 +94,55 @@ void GameClient::NetworkLoop()
 
 	{
 		std::lock_guard lk(mMutex);
+
 		mPeers.clear();
 		std::stringstream ss(textBuf);
 		std::string line;
+
 		while (std::getline(ss, line))
 		{
 			if (line.empty()) continue;
-			auto peer = AetherNet::SocketAddressFactory::CreateIPv4FromString(line);
+
+			std::istringstream ls(line);
+			uint32_t peerId;
+			std::string endpoint;
+			ls >> peerId >> endpoint;
+
+			auto peer = AetherNet::SocketAddressFactory::CreateIPv4FromString(endpoint);
 			std::cout << "[NetworkLoop] discovered peer: " << line << "\n";
-			mPeers.push_back(peer);
+			if (!peer) continue;
+
+			mPeers.emplace_back(peerId, peer);
 		}
 	}
 
 	// 3) hole-punch all peers once
-	mPuncher->punchAll(mPeers);
+	mPuncher->punchAll(
+		[&]
+		{
+			std::vector<AetherNet::SocketAddressPtr> addrs;
+			addrs.reserve(mPeers.size());
+			for (auto& pr : mPeers) addrs.push_back(pr.second);
 
-	// 4) now consume _both_ binary MOVE packets and any future text updates
+			return addrs;
+		}());
+
+	// 4) broadcast key to other peers
+	for (auto const& [peerId, peer] : mPeers)
+	{
+		std::string keyMsg =
+			"KEY " + std::to_string(mGClientId)
+			+ " " + std::to_string(mPublicKey)
+			+ "\n";
+
+		mUdpClient.GetSocket()->SendTo(
+			keyMsg.data(),
+			static_cast<int>(keyMsg.size()),
+			*peer
+		);
+	}
+
+	// 5) now consume KEY and MOVE packets
 	char recvBuf[1024];
 	while (mRunning)
 	{
@@ -115,46 +152,96 @@ void GameClient::NetworkLoop()
 		if (bytes < 0)
 		{
 			int err = -bytes;
-
 			if (err != WSAEMSGSIZE)
-				continue;
+				std::cerr << "ReceiveFrom error: " << err << "\n";
+			continue;
+		}
 
-			std::cerr << "ReceiveFrom error: " << err << "\n";
+		if (bytes == 0)
+		{
 			continue;
 		}
 
 		if (bytes == (int)MOVE_PACKET_SIZE)
 		{
-			// exactly one MOVE packet
 			auto const* p = reinterpret_cast<const MovePacket*>(recvBuf);
 			if (p->type == static_cast<uint8_t>(Action::MOVE))
 			{
 				uint32_t actorId = ntohl(p->actorId);
-				float x = aethernet_ntohf(p->x);
-				float y = aethernet_ntohf(p->y);
 
-				std::lock_guard lk(mMutex);
+		
+				uint32_t encX = p->x, encY = p->y;
+				uint32_t secret = 0;
+				auto it = mSharedKeys.find(actorId);
+				if (it != mSharedKeys.end())
+					secret = it->second;
+
+				uint32_t rawNetX = encX ^ secret;
+				uint32_t rawNetY = encY ^ secret;
+				float x = aethernet_ntohf(rawNetX);
+				float y = aethernet_ntohf(rawNetY);
+
+				std::lock_guard lock(mMutex);
 				mActors[actorId] = { x, y };
 			}
+			continue;
 		}
-		else if (bytes > 0)
+
+		recvBuf[bytes] = '\0';
+		std::string msg(recvBuf);
+
+		if (msg.rfind("KEY ", 0) == 0)
 		{
-			// some other text message (e.g. a new peer joined/left)
-			recvBuf[bytes] = '\0';
-			std::lock_guard lk(mMutex);
-			std::stringstream ss(recvBuf);
-			std::string line;
+			std::istringstream is(msg.substr(4));
+			uint32_t peerId;
+			int      peerPub;
+			is >> peerId >> peerPub;
+
+			int shared = SecurityService::ComputeShared(peerPub, mPrivateKey);
+			{
+				std::lock_guard lock(mMutex);
+				mSharedKeys[peerId] = shared;
+			}
+
+			std::string reply =
+				"KEY " + std::to_string(mGClientId)
+				+ " " + std::to_string(mPublicKey)
+				+ "\n";
+			mUdpClient.GetSocket()
+				->SendTo(reply.data(),
+					static_cast<int>(reply.size()),
+					fromAddr);
+
+			continue;
+		}
+
+		{
+			std::lock_guard lock(mMutex);
 			mPeers.clear();
+
+			std::stringstream ss(msg);
+			std::string line;
 			while (std::getline(ss, line))
 			{
 				if (line.empty()) continue;
-				if (auto peer = AetherNet::SocketAddressFactory::CreateIPv4FromString(line))
-					mPeers.push_back(peer);
+				std::istringstream ls(line);
+
+				uint32_t peerId;
+				std::string endpoint;
+				ls >> peerId >> endpoint;
+				if (!peerId || endpoint.empty()) continue;
+
+				if (auto peer = AetherNet::SocketAddressFactory::CreateIPv4FromString(endpoint))
+					mPeers.emplace_back(peerId, peer);
 			}
-			// re–punch in case peers changed
-			mPuncher->punchAll(mPeers);
+
+			std::vector<AetherNet::SocketAddressPtr> addrs;
+			addrs.reserve(mPeers.size());
+			for (auto& pr : mPeers)
+				addrs.push_back(pr.second);
+
+			mPuncher->punchAll(addrs);
 		}
-		// else bytes==0: empty datagram? ignore
 	}
 }
 
@@ -184,20 +271,29 @@ void GameClient::BroadcastPosition()
 	MovePacket packet;
 	packet.type = static_cast<uint8_t>(Action::MOVE);
 	packet.actorId = htonl(mGClientId);
-	packet.x = aethernet_htonf(mActors[mGClientId].x);
-	packet.y = aethernet_htonf(mActors[mGClientId].y);
 
-	for (auto const& peerPtr : mPeers)
+	float X = mActors[mGClientId].x;
+	float Y = mActors[mGClientId].y;
+
+	for (auto const& [peerId, peer] : mPeers)
 	{
-		std::cout << "[Broadcast] sending to "
-			<< peerPtr->GetIPv4Address() << ":" << peerPtr->GetPort()
-			<< "  x=" << mActors[mGClientId].x
-			<< " y=" << mActors[mGClientId].y << "\n";
+		auto it = mSharedKeys.find(peerId);
+		uint32_t secret = (it != mSharedKeys.end())
+			? it->second
+			: 0u;           
 
+		// XOR-encryption with secret
+		uint32_t netX = aethernet_htonf(X) ^ secret;
+		uint32_t netY = aethernet_htonf(Y) ^ secret;
+
+		packet.x = netX;
+		packet.y = netY;
+
+		// send encrypted packet
 		mUdpClient.GetSocket()->SendTo(
 			&packet,
 			MOVE_PACKET_SIZE,
-			*peerPtr       
+			*peer
 		);
 	}
 }
@@ -211,7 +307,6 @@ void GameClient::RenderFrame()
 	glViewport(0, 0, width, height);
 	glClearColor(0, 0, 0, 1);
 	glClear(GL_COLOR_BUFFER_BIT);
-
 
 	std::lock_guard lk(mMutex);
 

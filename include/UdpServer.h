@@ -33,7 +33,7 @@ namespace AetherNet
 		AetherNet::SocketAddressPtr mBindAddr;
 		bool mInitialized{ false };
 
-		std::unordered_map<std::string, AetherNet::SocketAddressPtr> mClients;
+		std::unordered_map<uint32_t, AetherNet::SocketAddressPtr> mClients;
 
 		//no copy-construction or assignment operation should be available
 		UdpServer(const UdpServer&) = delete;

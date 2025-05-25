@@ -60,37 +60,58 @@ void AetherNet::UdpServer::run()
     while (true)
     {
         int bytes = mSocket->ReceiveFrom(buffer, sizeof(buffer) - 1, fromAddr);
+
         if (bytes < 0)
         {
             continue;
         }
 
         buffer[bytes] = '\0';
-
+        std::string msg(buffer);
+        if (msg.rfind("REGISTER ", 0) == 0)
         {
-            in_addr in;
-            in.s_addr = htonl(fromAddr.GetIPv4Address());
-
-            char ipStr[INET_ADDRSTRLEN];
-            inet_ntop(AF_INET, &in, ipStr, sizeof(ipStr));
-
-            int port = fromAddr.GetPort();
-            std::string key = std::string(ipStr) + ":" + std::to_string(port);
-
+            // parse client ID
+            try
             {
-                uint32_t ip_h = fromAddr.GetIPv4Address();
-                uint16_t port = fromAddr.GetPort();
-                mClients[key] = std::make_shared<AetherNet::SocketAddress>(ip_h, port);
+                uint32_t clientId = std::stoul(msg.substr(9));
+                // store this client endpoint
+                mClients[clientId] =
+                    std::make_shared<SocketAddress>(
+                        fromAddr.GetIPv4Address(),
+                        fromAddr.GetPort()
+                    );
+                std::cout << "[UdpServer] Registered client " << clientId
+                    << " at " << fromAddr.GetIPv4Address()
+                    << ":" << fromAddr.GetPort() << "\n";
             }
+            catch (...)
+            {
+                continue;
+            }
+        }
 
-            for (auto& [recipientKey, recipientAddr] : mClients)
+        // broadcast each peer-list:
+        if (mClients.size() >= 2)
+        {
+            for (auto& [recipientId, recipientAddr] : mClients)
             {
                 std::string fullList;
-                for (auto& [peerKey, peerAddr] : mClients)
+                for (auto& [peerId, peerAddr] : mClients)
                 {
-                    if (peerKey == recipientKey)
+                    if (peerId == recipientId)
                         continue;
-                    fullList += peerKey + "\n";
+
+                    in_addr pin{};
+                    pin.s_addr = htonl(peerAddr->GetIPv4Address());
+                    char peerIpStr[INET_ADDRSTRLEN];
+                    inet_ntop(AF_INET, &pin, peerIpStr, sizeof(peerIpStr));
+
+                    fullList += std::to_string(peerId)
+                        + " "
+                        + std::string(peerIpStr)
+                        + ":"
+                        + std::to_string(peerAddr->GetPort())
+                        + "\n";
                 }
 
                 if (!fullList.empty())

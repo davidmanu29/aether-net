@@ -26,6 +26,7 @@ AetherNet::UdpSocketPtr UdpClient::GetSocket() const
 bool UdpClient::init()
 {
     mSocket = AetherNet::SocketUtil::CreateUDPSocket();
+
     if (!mSocket)
     {
         std::cerr << "Failed to create UDP socket\n";
