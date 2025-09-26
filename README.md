@@ -14,11 +14,11 @@ AetherNet is a **fast**, **easy-to-use**, and **safe** networking framework desi
 ### 1. Cloning
 
 ```bash
-git clone https://github.com/YourUsername/AetherNet.git
+git clone https://github.com/davidmanu29/AetherNet.git
 
 ``` 
 Or if you’re using it as a submodule in another project, run
 
 ```bash
-git submodule add https://github.com/YourUsername/AetherNet.git
+git submodule add https://github.com/davidmanu29/AetherNet.git
 ```

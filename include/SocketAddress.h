@@ -1,23 +1,31 @@
 #pragma once
 
+#include "AetherNetExport.h"
+
 #include <cstdint>
 #include <memory>
 #include <cstring>
 
 #include <WinSock2.h>
 
-class SocketAddress
+namespace AetherNet
 {
-	friend class UdpSocket;
-public:
-	SocketAddress(uint32_t inAddress, uint16_t inPort);
-	SocketAddress(const sockaddr& inSockAddr);
+	class AETHERNET_API SocketAddress
+	{
+		friend class UdpSocket;
+	public:
+		SocketAddress(uint32_t inAddress, uint16_t inPort);
+		SocketAddress(const sockaddr& inSockAddr);
 
-	size_t GetSize() const;
+		uint32_t GetIPv4Address() const;
+		uint16_t GetPort() const;
 
-private:
-	sockaddr mSockAddr;
-	sockaddr_in* GetAsSockAddrIn();
-};
+		size_t GetSize() const;
 
-typedef std::shared_ptr<SocketAddress> SocketAddressPtr;
+	private:
+		sockaddr mSockAddr;
+		sockaddr_in* GetAsSockAddrIn();
+	};
+
+	typedef std::shared_ptr<SocketAddress> SocketAddressPtr;
+}
